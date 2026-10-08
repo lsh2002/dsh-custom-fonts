@@ -32,6 +32,17 @@ window.__ModuleLoader__.load({
     const state = { en: '', zh: '', code: '', size: 0 }
     let styleTag = null
 
+    // The settings form for our namespace, captured in apply(). Writes go
+    // through it so values are persisted by the Host rather than kept in the
+    // bundle closure (which is rebuilt on every page load).
+    let writeForm = null
+
+    /** Persist one field; ignore the write until the form is available. */
+    function persist(patch) {
+      if (writeForm === null) return
+      for (const [key, value] of Object.entries(patch)) writeForm.set(key, value)
+    }
+
     const EN_FONTS = [
       'Segoe UI', 'Arial', 'Helvetica', 'Georgia', 'Times New Roman',
       'Courier New', 'Consolas', 'Verdana', 'Calibri',
@@ -141,17 +152,17 @@ window.__ModuleLoader__.load({
         createElement(Field, {
           label: 'UI 字体 · 英文', listId: 'dsh-custom-fonts-en-list', value: en,
           placeholder: '例如 Segoe UI, Arial', options: EN_FONTS,
-          onChange: (e) => { setEn(e.target.value); applyFonts({ en: e.target.value }) },
+          onChange: (e) => { setEn(e.target.value); applyFonts({ en: e.target.value }); persist({ en: e.target.value }) },
         }),
         createElement(Field, {
           label: 'UI 字体 · 中文', listId: 'dsh-custom-fonts-zh-list', value: zh,
           placeholder: '例如 微软雅黑, 思源黑体', options: ZH_FONTS,
-          onChange: (e) => { setZh(e.target.value); applyFonts({ zh: e.target.value }) },
+          onChange: (e) => { setZh(e.target.value); applyFonts({ zh: e.target.value }); persist({ zh: e.target.value }) },
         }),
         createElement(Field, {
           label: '代码字体', listId: 'dsh-custom-fonts-code-list', value: code,
           placeholder: '例如 Consolas, JetBrains Mono', options: CODE_FONTS,
-          onChange: (e) => { setCode(e.target.value); applyFonts({ code: e.target.value }) },
+          onChange: (e) => { setCode(e.target.value); applyFonts({ code: e.target.value }); persist({ code: e.target.value }) },
         }),
         createElement('div', { style: { marginBottom: 16 } },
           createElement('div', {
@@ -170,7 +181,7 @@ window.__ModuleLoader__.load({
             ),
             size !== 0
               ? createElement('button', {
-                  onClick: () => { setSize(0); applyFonts({ size: 0 }) },
+                  onClick: () => { setSize(0); applyFonts({ size: 0 }); persist({ size: 0 }) },
                   style: {
                     fontSize: 12, padding: '2px 10px', borderRadius: 6, cursor: 'pointer',
                     border: '1px solid var(--dsw-alias-border-l1)',
@@ -182,7 +193,7 @@ window.__ModuleLoader__.load({
           ),
           createElement('input', {
             type: 'range', min: -4, max: 8, step: 1, value: size,
-            onChange: (e) => { const v = Number(e.target.value); setSize(v); applyFonts({ size: v }) },
+            onChange: (e) => { const v = Number(e.target.value); setSize(v); applyFonts({ size: v }); persist({ size: v }) },
             style: { width: '100%' },
           }),
         ),
@@ -224,6 +235,7 @@ window.__ModuleLoader__.load({
           onClick: () => {
             setEn(''); setZh(''); setCode(''); setSize(0)
             applyFonts({ en: '', zh: '', code: '', size: 0 })
+            persist({ en: '', zh: '', code: '', size: 0 })
           },
           style: {
             marginTop: 16, padding: '8px 16px', borderRadius: 8, cursor: 'pointer',
@@ -235,6 +247,24 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /**
+     * Adopt whatever the settings form currently holds.
+     *
+     * The form is the single source of truth: it is hydrated from the Host
+     * document when the plugin loads, and every accepted write lands back in
+     * it, so this is the one place that turns stored values into CSS.
+     */
+    function adopt(form) {
+      const snapshot = form.getSnapshot()
+      const value = (snapshot && snapshot.value) || {}
+      applyFonts({
+        en: typeof value.en === 'string' ? value.en : '',
+        zh: typeof value.zh === 'string' ? value.zh : '',
+        code: typeof value.code === 'string' ? value.code : '',
+        size: Number(value.size) || 0,
+      })
+    }
+
     function apply(ctx) {
       // `slots` is declared in `inject`, so Cordis only runs apply() once the
       // service is present.
@@ -243,12 +273,21 @@ window.__ModuleLoader__.load({
       ctx.effect(() => () => {
         if (styleTag !== null) { styleTag.remove(); styleTag = null }
       })
+
+      // Stored preferences: adopt once on load, then follow every accepted
+      // write. `get` returns the shared form for our namespace, so a second
+      // consumer observes the same values rather than a private copy.
+      const form = ctx.configForms.get('dsh-custom-fonts')
+      ctx.effect(() => form.subscribe(() => adopt(form)), 'dsh-custom-fonts: adopt settings')
+      adopt(form)
+      writeForm = form
+
       slots.inject('settings.section', () => slots.register(
         { name: 'settings.section', id: 'fonts', order: 25, label: () => '字体' },
         () => createElement(FontPage),
       ))
     }
 
-    return { name: 'dsh-custom-fonts', inject: ['slots'], apply }
+    return { name: 'dsh-custom-fonts', inject: ['slots', 'configForms'], apply }
   },
 })

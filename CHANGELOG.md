@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Preferences now persist.** The four settings (UI English font, UI Chinese font, code font, size offset) are stored in the Host settings document under the `dsh-custom-fonts` namespace and re-applied on load, so they survive a page reload and a restart. Previously they lived only in the bundle closure and were lost on every reload.
+- A minimal host half: it declares the settings schema (`Config`, every field `.volatile()`) and nothing else. `inject` is deliberately empty — declaring `settings` there would make the plugin's fiber wait for the settings service and never activate.
+
+### Changed
+
+- The browser half injects `configForms` and reads the namespace through `configForms.get('dsh-custom-fonts')`; each control writes its value back through the same form. Live application is unchanged — edits still take effect immediately.
+
 ## [1.1.0] - 2026-08-24
 
 ### Added
